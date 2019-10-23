@@ -1,32 +1,3 @@
-const localStorageConfigKey = 'octanetopus-config';
-const defaultConfigObj = {
-	urls: [
-		'localhost:9090/ui/',
-		'center.almoctane.com/ui/'
-	],
-	cityClocks: [
-		{
-			uiName: 'San Francisco',
-			countryCode: 'us',
-			timeZone: 'America/Los_Angeles'
-		},
-		{
-			uiName: 'London',
-			countryCode: 'gb',
-			timeZone: 'Europe/London'
-		},
-		{
-			uiName: 'Tel-Aviv',
-			countryCode: 'il',
-			timeZone: 'Asia/Jerusalem'
-		},
-		{
-			uiName: 'Shanghai',
-			countryCode: 'cn',
-			timeZone: 'Asia/Shanghai'
-		},
-	]
-};
 const jsCheckScript = 'content/octanetopus-check.js';
 const cssContentScript = 'content/octanetopus-content.css';
 const jsContentScript = 'content/octanetopus-content.js';
@@ -78,9 +49,9 @@ const addMessageListener = () => {
 const addOnTabCompleteListener = () => {
 	chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 		const config = JSON.parse(localStorage.getItem(localStorageConfigKey));
-		if (changeInfo.status === 'complete' && config.urls && config.urls.length > 0) {
+		if (changeInfo.status === 'complete' && config.octaneUrls && config.octaneUrls.length > 0) {
 			let found = false;
-			config.urls.forEach(url => {
+			config.octaneUrls.forEach(url => {
 				if (!found && tab.url.includes(url)) {
 					found = true;
 					updatedTabId = tabId;

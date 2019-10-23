@@ -1,4 +1,5 @@
 let config = null;
+let clocks = [];
 
 const log = (msg) => {
 	console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
@@ -50,62 +51,149 @@ const waitForAppReady = (selectorToFind, onAppReady, curTryNumber = 1) => {
 
 const onAppReady = () => {
 	log('onAppReady');
-	addCityClocks();
+	colorMasthead();
+	addClocks();
 };
 
-const updateClocks = () => {
-	config.cityClocks.forEach((cc, i) => {
-		const flagElm = document.getElementById(`octanetopus-city-clock--${i}--flag`);
-		const timeElm = document.getElementById(`octanetopus-city-clock--${i}--time`);
-		if (flagElm && timeElm) {
-			(async () => {
-				const r = await	fetch(`https://worldtimeapi.org/api/timezone/${cc.timeZone}`);
-				const j = await	r.json();
-				const cityTimeStr = j['datetime'];
-				const hh = cityTimeStr.substr(11, 2);
-				const mm = cityTimeStr.substr(14, 2);
-				//const h = parseInt(hh);
-				//timeElm.style['background-position-x'] = `-${25 * h}px`;
-				//timeElm.style['color'] = (h >= 10 && h <= 15) ? '#000' : '#fff';
-				timeElm.textContent = `${hh}:${mm}`;
-				flagElm.classList.remove('octanetopus-transparent');
-				timeElm.classList.remove('octanetopus-transparent');
-			})();
+const colorMasthead = () => {
+	log('colorMasthead');
+	if (config.mastheadGradient) {
+		const elm = document.querySelector('.mqm-masthead > .masthead-bg-color');
+		if (elm) {
+			elm.style['background-image'] = `linear-gradient(to right, ${config.mastheadGradient.join(', ')})`;
 		}
+	}
+};
+
+const goFetchTime = async (timeZone) => {
+	//return {datetime: "...........12.34.56"};
+	log(`goFetchTime ${timeZone}`);
+	try {
+		const r = await fetch(`https://worldtimeapi.org/api/timezone/${timeZone}`);
+		if (!r.ok) {
+			log(`Error on goFetchTime - ${r.status} ${r.statusText}`);
+			return null;
+		}
+		return await r.json();
+	} catch(err) {
+		log(`Error on goFetchTime - ${err.message || err.toString()}`);
+		return null;
+	}
+};
+
+const displayClockTime = (clockIdx, ...digits) => {
+	digits.forEach((d, digitIdx) => {
+		document.getElementById(`octanetopus--clock--${clockIdx}--digit-container--${digitIdx}`).style['margin-top'] =
+		d === '?' ? '-10em' : `-${d}em`;
 	});
 };
 
-const addCityClocks = () => {
+const updateClock = async (c, i, tryNumber=1) => {
+	const clockElm = document.getElementById(`octanetopus--clock--${i}`);
+	const flagElm = document.getElementById(`octanetopus--clock--${i}--flag`);
+	const timeElm = document.getElementById(`octanetopus--clock--${i}--time`);
+	if (clockElm && flagElm && timeElm) {
+		const clock = clocks[i];
+		if (!clock.fetchTimeUnix) {
+			const j = await goFetchTime(c.timeZone);
+			if (j) {
+				clocks[i].fetchTimeUnix = (new Date()).getTime();
+				const timeStr = j['datetime'];
+				clocks[i].fetchTimeStr = timeStr;
+				displayClockTime(i, timeStr.substr(11, 1), timeStr.substr(12, 1), timeStr.substr(14, 1), timeStr.substr(15, 1));
+			} else {
+				displayClockTime(i, '?', '?', '?', '?');
+				if (tryNumber < 3) {
+					setTimeout(async () => {
+						await updateClock(c, i, tryNumber + 1);
+					}, 5000);
+				}
+			}			
+		} else {
+			const fetchTotalSeconds = parseInt(clock.fetchTimeStr.substr(11, 2), 10) * 60 * 60 + parseInt(clock.fetchTimeStr.substr(14, 2), 10) * 60 + parseInt(clock.fetchTimeStr.substr(17, 2), 10);
+			const diffSeconds = ((new Date()).getTime() - clock.fetchTimeUnix) / 1000;
+			const curTotalMinutes = Math.round((fetchTotalSeconds + diffSeconds) / 60);
+			const h = Math.trunc(curTotalMinutes / 60) % 24;
+			const m = curTotalMinutes % 60;
+			const hh = h < 10 ? '0' + h : '' + h;
+			const mm = m < 10 ? '0' + m : '' + m;
+			displayClockTime(i, hh.substr(0, 1), hh.substr(1, 1), mm.substr(0, 1), mm.substr(1, 1));			
+		}
+	}
+};
+
+const updateClocks = () => {
+	config.mastheadClocks.forEach((c, i) => {
+		updateClock(c, i).then(()=>{});
+	});
+};
+
+const addClocks = () => {
 	log('add clocks');
+	clocks = [];
 	const parentElm = document.querySelector('.mqm-masthead > .masthead-bg-color > div > div:nth-child(2)');
-	if (parentElm && config && config.cityClocks && config.cityClocks.length && config.cityClocks.length > 0) {
+	if (parentElm && config && config.mastheadClocks && config.mastheadClocks.length && config.mastheadClocks.length > 0) {
 		const clocksElm = document.createElement('div');
-		clocksElm.setAttribute('id', 'octanetopus-city-clocks');
-		clocksElm.classList.add('octanetopus-city-clocks');
-		config.cityClocks.forEach((cc, i) => {
+		clocksElm.setAttribute('id', 'octanetopus--clocks');
+		clocksElm.classList.add('octanetopus--clocks');
+		config.mastheadClocks.forEach((c, i) => {
+			clocks.push({
+				longName: c.longName,
+				shortName: c.shortName,
+				countryCode: c.countryCode,
+				timeZone: c.timeZone,
+			});
+
 			const clockElm = document.createElement('div');
-			clockElm.setAttribute('id', `octanetopus-city-clock--${i}`);
-			clockElm.classList.add('octanetopus-city-clock');
-			clockElm.setAttribute('title', cc.uiName);
+			clockElm.setAttribute('id', `octanetopus--clock--${i}`);
+			clockElm.classList.add('octanetopus--clock');
+			clockElm.setAttribute('title', c.longName);
 
 			const flagElm = document.createElement('img');
-			flagElm.setAttribute('id', `octanetopus-city-clock--${i}--flag`);
-			flagElm.classList.add('octanetopus-city-clock--flag', 'octanetopus-transparent');
-			flagElm.setAttribute('src', chrome.extension.getURL(`img/flags/${cc.countryCode}.svg`));
+			flagElm.setAttribute('id', `octanetopus--clock--${i}--flag`);
+			flagElm.classList.add('octanetopus--clock--flag');
+			flagElm.setAttribute('src', chrome.extension.getURL(`img/flags/${c.countryCode}.svg`));
 			clockElm.appendChild(flagElm);
 
+			const textElm = document.createElement('div');
+			textElm.classList.add(`octanetopus--clock--text`);
+
+			const nameElm = document.createElement('div');
+			nameElm.classList.add('octanetopus--clock--name', 'octanetopus-ellipsis');
+			nameElm.textContent = c.shortName;
+			textElm.appendChild(nameElm);
+
 			const timeElm = document.createElement('div');
-			timeElm.setAttribute('id', `octanetopus-city-clock--${i}--time`);
-			timeElm.classList.add('octanetopus-city-clock--time', 'octanetopus-transparent');
-			//timeElm.style['background-image'] = 'linear-gradient(to right, #000, #000 20%, #003 30%, #669 35%, #fc0 60%, #f30 70%, #603 80%, #103 90%, #000 95%, #000)';
-			//timeElm.style['background-size'] = '600px';
-			timeElm.textContent = `??:??`;
-			clockElm.appendChild(timeElm);
+			timeElm.setAttribute('id', `octanetopus--clock--${i}--time`);
+			timeElm.classList.add('octanetopus--clock--time');
+
+			for (let ul = 0; ul < 4; ul++) {
+				const digitContainerElm = document.createElement('ul');
+				digitContainerElm.setAttribute('id', `octanetopus--clock--${i}--digit-container--${ul}`);
+				digitContainerElm.classList.add('octanetopus--clock--digit-container');
+
+				['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '?'].forEach(d => {
+					const digitElm = document.createElement('li');
+					digitElm.setAttribute('id', `octanetopus--clock--${i}--digit-item`);
+					digitElm.classList.add('octanetopus--clock--digit-item');
+					digitElm.textContent = d;
+					digitContainerElm.appendChild(digitElm);
+				});
+
+				timeElm.appendChild(digitContainerElm);
+			}
+
+			textElm.appendChild(timeElm);
+
+			clockElm.appendChild(textElm);
 
 			clocksElm.appendChild(clockElm);
 		});
-		parentElm.appendChild(clocksElm);
-		log(`${config.cityClocks.length} clocks added`);
+		parentElm.insertBefore(clocksElm, parentElm.childNodes[0]);
+		config.mastheadClocks.forEach((c, i) => {
+			displayClockTime(i, '?', '?', '?', '?');
+		});
+		log(`${config.mastheadClocks.length} clocks added`);
 		updateClocks();
 		setInterval(() => {
 			updateClocks();
@@ -116,9 +204,8 @@ const addCityClocks = () => {
 const go = () => {
 	log('go');
 	document.body.setAttribute('octanetopus-content-injected', 'true');
-	document.addEventListener('octanetopus-app-to-content--user', (/*e*/) => {
-		log('octanetopus-app-to-content--user');
-		//alert(`Hi ${e.detail}`);
+	document.addEventListener('octanetopus-app-to-content--user', () => {
+		log('octanetopus-app-to-content--user');		
 	});
 	chrome.runtime.sendMessage(
 	{
