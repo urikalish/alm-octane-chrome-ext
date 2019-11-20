@@ -1,5 +1,7 @@
 let config = null;
 let clocks = [];
+let curNewsText = '';
+const parentElementQuerySelector = '.mqm-masthead > .masthead-bg-color > div > div:nth-child(2)';
 
 const log = (msg) => {
 	console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
@@ -53,6 +55,7 @@ const onAppReady = () => {
 	log('onAppReady');
 	colorMasthead();
 	addClocks();
+	handleNews();
 };
 
 const colorMasthead = () => {
@@ -65,22 +68,6 @@ const colorMasthead = () => {
 			}
 		}
 	});
-};
-
-const goFetchTime = async (timeZone) => {
-	//return {datetime: "...........12.34.56"};
-	log(`goFetchTime ${timeZone}`);
-	try {
-		const r = await fetch(`https://worldtimeapi.org/api/timezone/${timeZone}`);
-		if (!r.ok) {
-			log(`Error on goFetchTime - ${r.status} ${r.statusText}`);
-			return null;
-		}
-		return await r.json();
-	} catch(err) {
-		log(`Error on goFetchTime - ${err.message || err.toString()}`);
-		return null;
-	}
 };
 
 const displayClockTime = (clockIdx, ...digits) => {
@@ -97,20 +84,27 @@ const updateClock = async (c, i, tryNumber=1) => {
 	if (clockElm && flagElm && timeElm) {
 		const clock = clocks[i];
 		if (!clock.fetchTimeUnix) {
-			const j = await goFetchTime(c.timeZone);
-			if (j) {
-				clocks[i].fetchTimeUnix = (new Date()).getTime();
-				const timeStr = j['datetime'];
-				clocks[i].fetchTimeStr = timeStr;
-				displayClockTime(i, timeStr.substr(11, 1), timeStr.substr(12, 1), timeStr.substr(14, 1), timeStr.substr(15, 1));
-			} else {
-				displayClockTime(i, '?', '?', '?', '?');
-				if (tryNumber < 3) {
-					setTimeout(async () => {
-						await updateClock(c, i, tryNumber + 1);
-					}, 5000);
+			chrome.runtime.sendMessage(
+			{
+				type: 'octanetopus-content-to-background--time',
+				timeZone: c.timeZone
+			},
+			response => {
+				const j = response ? JSON.parse(response) : null;
+				if (j) {
+					clocks[i].fetchTimeUnix = (new Date()).getTime();
+					const timeStr = j['datetime'];
+					clocks[i].fetchTimeStr = timeStr;
+					displayClockTime(i, timeStr.substr(11, 1), timeStr.substr(12, 1), timeStr.substr(14, 1), timeStr.substr(15, 1));
+				} else {
+					displayClockTime(i, '?', '?', '?', '?');
+					if (tryNumber < 3) {
+						setTimeout(async () => {
+							await updateClock(c, i, tryNumber + 1);
+						}, 5000);
+					}
 				}
-			}			
+			});
 		} else {
 			const fetchTotalSeconds = parseInt(clock.fetchTimeStr.substr(11, 2), 10) * 60 * 60 + parseInt(clock.fetchTimeStr.substr(14, 2), 10) * 60 + parseInt(clock.fetchTimeStr.substr(17, 2), 10);
 			const diffSeconds = ((new Date()).getTime() - clock.fetchTimeUnix) / 1000;
@@ -133,7 +127,7 @@ const updateClocks = () => {
 const addClocks = () => {
 	log('add clocks');
 	clocks = [];
-	const parentElm = document.querySelector('.mqm-masthead > .masthead-bg-color > div > div:nth-child(2)');
+	const parentElm = document.querySelector(parentElementQuerySelector);
 	if (parentElm && config && config.mastheadClocks && config.mastheadClocks.length && config.mastheadClocks.length > 0) {
 		const clocksElm = document.createElement('div');
 		clocksElm.setAttribute('id', 'octanetopus--clocks');
@@ -203,12 +197,68 @@ const addClocks = () => {
 	}
 };
 
+const handleNews = () => {
+	log('handleNews');
+	const parentElm = document.querySelector(parentElementQuerySelector);
+	if (parentElm && config.rssFeed && config.rssFeed.enabled) {
+
+		const newsElm = document.createElement('div');
+		newsElm.setAttribute('id', 'octanetopus--news');
+		newsElm.classList.add('octanetopus--news');
+		parentElm.insertBefore(newsElm, parentElm.childNodes[0]);
+
+		getNews();
+		setInterval(() => {
+			getNews();
+		}, config.rssFeed.refreshMinutes*60*1000);
+	}
+};
+
+const getNews = () => {
+	//log('getNews');
+	chrome.runtime.sendMessage(
+		{
+			type: 'octanetopus-content-to-background--news'
+		},
+		response => {
+			const items = JSON.parse(response || '[]');
+			if (items.length > 0) {
+				const item = items[0];
+				const timeStr = item.pubDate.substr(17, 5);
+				const text = `(${timeStr}) ${item.title}`;
+				if (text !== curNewsText) {					
+					//log(`news item: ${text}`);										
+					const newsElm = document.getElementById('octanetopus--news');
+					newsElm.innerHTML = '';
+					const isEnglish = /[a-z]+/i.test(text);
+					newsElm.style['text-align'] = isEnglish ? 'left' : 'right';
+					newsElm.style['direction'] = isEnglish ? 'ltr' : 'rtl';
+					const titleElm = document.createElement('a');
+					titleElm.textContent = text;
+					titleElm.setAttribute('href', item.link);
+					titleElm.setAttribute('target', '_blank');
+					let tooltip = '';
+					let count = 0;
+					items.forEach(i => {
+						count++;
+						if (count <= 15) {
+							const timeStr = i.pubDate.substr(17, 5);
+							tooltip += `${count > 1 ? '\n' : ''}${timeStr} - ${i.title}`;
+						}
+					});
+					titleElm.setAttribute('title', tooltip);
+					titleElm.classList.add('octanetopus--news--item', 'octanetopus-ellipsis');
+					newsElm.appendChild(titleElm);
+					curNewsText = text;					
+				}
+			}
+		}
+	);
+};
+
 const go = () => {
 	log('go');
 	document.body.setAttribute('octanetopus-content-injected', 'true');
-	document.addEventListener('octanetopus-app-to-content--user', () => {
-		log('octanetopus-app-to-content--user');		
-	});
 	chrome.runtime.sendMessage(
 	{
 		type: 'octanetopus-content-to-background--init'
