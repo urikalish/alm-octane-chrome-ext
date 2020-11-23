@@ -7,7 +7,7 @@ const log = (msg) => {
 	console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
 };
 
-const waitForConfigMaxNumberOfTries = 30;
+const waitForConfigMaxNumberOfTries = 60;
 const waitForConfigRetryFrequencyMillis = 1000;
 const waitForConfig = (onConfigReady, curTryNumber = 1) => {
 	log(`waitForConfig - try #${curTryNumber}`);
@@ -129,6 +129,7 @@ const addClocks = () => {
 	clocks = [];
 	const parentElm = document.querySelector(parentElementQuerySelector);
 	if (parentElm && config && config.mastheadClocks && config.mastheadClocks.length && config.mastheadClocks.length > 0) {
+		parentElm.classList.add('flex', 'justify-content--center', 'align-items--center');
 		const clocksElm = document.createElement('div');
 		clocksElm.setAttribute('id', 'octanetopus--clocks');
 		clocksElm.classList.add('octanetopus--clocks');
