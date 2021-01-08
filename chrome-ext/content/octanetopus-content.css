@@ -117,6 +117,7 @@
 }
 
 .octanetopus--player {
+    position: relative;
     display: flex;
     min-width: 94px;
     height: 26px;
@@ -159,18 +160,24 @@
     background-color: #0f0;
     box-shadow: 0 0 4px #0f0;
 }
+.octanetopus--player--led:hover {
+    opacity: 0.8;
+}
 .octanetopus--player--radio {
     position: relative;
     height: 20px;
     top: 2px;
     opacity: 0.6;
-    transition: all 0.5s ease-in-out;
+    transition: all 0.25s ease-in-out;
     cursor: pointer;
 }
 .octanetopus--player--active > .octanetopus--player--radio {
     opacity: 1;
 }
-.octanetopus--player--station--button {
+.octanetopus--player--radio:hover {
+    opacity: 0.8;
+}
+.octanetopus--player--navigate--button {
     position: relative;
     width: 20px;
     height: 20px;
@@ -178,13 +185,26 @@
     border-radius: 50%;
     background-color: #666;
     opacity: 0.6;
-    transition: all 0.5s ease-in-out;
+    transition: all 0.25s ease-in-out;
     cursor: pointer;
 }
-.octanetopus--player--active > .octanetopus--player--station--button {
+.octanetopus--player--active > .octanetopus--player--navigate--button {
     opacity: 1;
 }
-.octanetopus--player--station--prev {
+.octanetopus--player--navigate--button:hover {
+    opacity: 0.8;
 }
-.octanetopus--player--station--next {
+.octanetopus--player--navigate--prev {
+}
+.octanetopus--player--navigate--next {
+}
+.octanetopus--player--stream-name {
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    color: #888;
+    font-family: arial, sans-serif;
+    font-size: 11px;
 }

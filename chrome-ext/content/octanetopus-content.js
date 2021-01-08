@@ -5,10 +5,13 @@ let isAudioOn = false;
 let isPlayTriggered = false;
 let audioStreams = [];
 let audioStreamIndex = 0;
+let playerElm;
+let audioElm;
+let streamNameElm;
 const parentElementQuerySelector = '.mqm-masthead > .masthead-bg-color > div > div:nth-child(2)';
 
-const log = (msg) => {
-	console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
+const log = (/*msg*/) => {
+	//console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
 };
 
 const waitForConfigMaxNumberOfTries = 60;
@@ -209,14 +212,11 @@ const handleClocks = () => {
 const playRadio = async () => {
 	log('playRadio');
 	isPlayTriggered = true;
-	const playerElm = document.getElementById('octanetopus--player');
-	const radioElm = document.getElementById('octanetopus--player--radio');
-	const audioElm = document.getElementById('octanetopus--player--audio');
 	try {
 		playerElm.classList.add('octanetopus--player--active');
+		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
 		audioElm.setAttribute('src', audioStreams[audioStreamIndex].src);
 		await audioElm.play();
-		radioElm.setAttribute('title', audioStreams[audioStreamIndex].name);
 		isAudioOn = true;
 	} catch (err) {
 		log(`error playing audio from ${audioStreams[audioStreamIndex].name}`);
@@ -228,79 +228,73 @@ const playRadio = async () => {
 
 const stopRadio = () => {
 	log('stopRadio');
-	const playerElm = document.getElementById('octanetopus--player');
-	const radioElm = document.getElementById('octanetopus--player--radio');
-	const audioElm = document.getElementById('octanetopus--player--audio');
 	playerElm.classList.remove('octanetopus--player--active');
 	audioElm.pause();
-	radioElm.setAttribute('title', '');
+	streamNameElm.textContent = '';
 	isAudioOn = false;
+};
+
+const searchStation = async (isUp) => {
+	log('searchStation');
+	if (isPlayTriggered) {
+		return;
+	}
+	const startIndex = audioStreamIndex;
+	do {
+		if (isUp) {
+			audioStreamIndex = (audioStreamIndex + 1 + audioStreams.length) % audioStreams.length;
+		} else {
+			audioStreamIndex = (audioStreamIndex - 1 + audioStreams.length) % audioStreams.length;
+		}
+		await playRadio();
+	} while(!isAudioOn && audioStreamIndex !== startIndex);
+};
+
+const toggleRadio = async () => {
+	log('toggleRadio');
+	if (isPlayTriggered) {
+		return;
+	}
+	if (isAudioOn) {
+		stopRadio();
+	} else {
+		(async () => {
+			await playRadio();
+			if (!isAudioOn) {
+				await searchStation(true);
+			}
+		})();
+	}
 };
 
 const onClickLed = async () => {
 	log('onClickLed');
-	if (isPlayTriggered) {
-		return;
-	}
-	if (isAudioOn) {
-		stopRadio();
-	} else {
-		await playRadio();
-	}
+	await toggleRadio();
 };
 
 const onClickRadio = async () => {
 	log('onClickRadio');
-	if (isPlayTriggered) {
-		return;
-	}
-	if (isAudioOn) {
-		stopRadio();
-	} else {
-		await playRadio();
-	}
+	await toggleRadio();
 };
 
-const getPrevStation = () => {
-	return (audioStreamIndex - 1 + audioStreams.length) % audioStreams.length;
+const onClickPrevStream = async () => {
+	log('onClickPrevStream');
+	await searchStation(false);
 };
 
-const getNextStation = () => {
-	return (audioStreamIndex + 1 + audioStreams.length) % audioStreams.length;
-};
-
-const onClickPrevStation = async () => {
-	log('onClickPrevStation');
-	if (isPlayTriggered) {
-		return;
-	}
-	const startIndex = audioStreamIndex;
-	do {
-		audioStreamIndex = getPrevStation();
-		await playRadio();
-	} while(!isAudioOn && audioStreamIndex !== startIndex);
-};
-
-const onClickNextStation = async () => {
-	log('onClickNextStation');
-	if (isPlayTriggered) {
-		return;
-	}
-	const startIndex = audioStreamIndex;
-	do {
-		audioStreamIndex = getNextStation();
-		await playRadio();
-	} while(!isAudioOn && audioStreamIndex !== startIndex);
+const onClickNextStream = async () => {
+	log('onClickNextStream');
+	await searchStation(true);
 };
 
 const addPlayer = () => {
 	log('addPlayer');
 	const parentElm = document.querySelector(parentElementQuerySelector);
-	if (!parentElm) {
+	if (!parentElm || (config && config.radio && !config.radio.enabled)) {
 		return;
 	}
 
-	const playerElm = document.createElement('div');
+	playerElm = document.createElement('div');
 	playerElm.setAttribute('id', 'octanetopus--player');
 	playerElm.classList.add('octanetopus--player');
 
@@ -312,8 +306,8 @@ const addPlayer = () => {
 
 	const leftArrow = document.createElement('img');
 	leftArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-left.svg`));
-	leftArrow.classList.add('octanetopus--player--station--button', 'octanetopus--player--station--prev');
-	leftArrow.addEventListener('click', onClickPrevStation, false);
+	leftArrow.classList.add('octanetopus--player--navigate--button', 'octanetopus--player--navigate--prev');
+	leftArrow.addEventListener('click', onClickPrevStream, false);
 	playerElm.appendChild(leftArrow);
 
 	const radioElm = document.createElement('img');
@@ -325,11 +319,17 @@ const addPlayer = () => {
 
 	const rightArrow = document.createElement('img');
 	rightArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-right.svg`));
-	rightArrow.classList.add('octanetopus--player--station--button', 'octanetopus--player--station--next');
-	rightArrow.addEventListener('click', onClickNextStation, false);
+	rightArrow.classList.add('octanetopus--player--navigate--button', 'octanetopus--player--navigate--next');
+	rightArrow.addEventListener('click', onClickNextStream, false);
 	playerElm.appendChild(rightArrow);
 
-	const audioElm = document.createElement('audio');
+	streamNameElm = document.createElement('div');
+	streamNameElm.setAttribute('id', 'octanetopus--player--stream-name');
+	streamNameElm.classList.add('octanetopus--player--stream-name');
+	streamNameElm.textContent = '';
+	playerElm.appendChild(streamNameElm);
+
+	audioElm = document.createElement('audio');
 	audioElm.pause();
 	audioElm.setAttribute('id', 'octanetopus--player--audio');
 	audioElm.setAttribute('preload', 'none');
@@ -361,6 +361,9 @@ const fetchAudioStreams = () => {
 		const jsonObj = JSON.parse(response);
 		if (jsonObj['audioStreams']) {
 			audioStreams = [...audioStreams, ...jsonObj['audioStreams']];
+		}
+		if (jsonObj['_audioStreams'] && (window.location.hostname.startsWith('localhost') || window.location.hostname.startsWith('127.0.0.1'))) {
+			audioStreams = [...audioStreams, ...jsonObj['_audioStreams']];
 		}
 		shuffleArray(audioStreams);
 	});
