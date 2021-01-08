@@ -1,6 +1,10 @@
 let config = null;
 let clocks = [];
 let curNewsText = '';
+let isAudioOn = false;
+let isPlayTriggered = false;
+let audioStreams = [];
+let audioStreamIndex = 0;
 const parentElementQuerySelector = '.mqm-masthead > .masthead-bg-color > div > div:nth-child(2)';
 
 const log = (msg) => {
@@ -22,7 +26,7 @@ const waitForConfig = (onConfigReady, curTryNumber = 1) => {
 		waitForConfigRetryFrequencyMillis
 		);
 	} else {
-		log('max number of retries exceeded - give up');
+		log('Max number of retries exceeded - give up');
 	}
 };
 
@@ -47,14 +51,15 @@ const waitForAppReady = (selectorToFind, onAppReady, curTryNumber = 1) => {
 		waitForAppReadyRetryFrequencyMillis
 		);
 	} else {
-		log('max number of retries exceeded - give up');
+		log('Max number of retries exceeded - give up');
 	}
 };
 
 const onAppReady = () => {
 	log('onAppReady');
 	colorMasthead();
-	addClocks();
+	handleClocks();
+	handlePlayer();
 	handleNews();
 };
 
@@ -81,40 +86,41 @@ const updateClock = async (c, i, tryNumber=1) => {
 	const clockElm = document.getElementById(`octanetopus--clock--${i}`);
 	const flagElm = document.getElementById(`octanetopus--clock--${i}--flag`);
 	const timeElm = document.getElementById(`octanetopus--clock--${i}--time`);
-	if (clockElm && flagElm && timeElm) {
-		const clock = clocks[i];
-		if (!clock.fetchTimeUnix) {
-			chrome.runtime.sendMessage(
-			{
-				type: 'octanetopus-content-to-background--time',
-				timeZone: c.timeZone
-			},
-			response => {
-				const j = response ? JSON.parse(response) : null;
-				if (j) {
-					clocks[i].fetchTimeUnix = (new Date()).getTime();
-					const timeStr = j['datetime'];
-					clocks[i].fetchTimeStr = timeStr;
-					displayClockTime(i, timeStr.substr(11, 1), timeStr.substr(12, 1), timeStr.substr(14, 1), timeStr.substr(15, 1));
-				} else {
-					displayClockTime(i, '?', '?', '?', '?');
-					if (tryNumber < 3) {
-						setTimeout(async () => {
-							await updateClock(c, i, tryNumber + 1);
-						}, 5000);
-					}
+	if (!clockElm || !flagElm || !timeElm) {
+		return;
+	}
+	const clock = clocks[i];
+	if (!clock.fetchTimeUnix) {
+		chrome.runtime.sendMessage(
+		{
+			type: 'octanetopus-content-to-background--time',
+			timeZone: c.timeZone
+		},
+		response => {
+			const j = response ? JSON.parse(response) : null;
+			if (j) {
+				clocks[i].fetchTimeUnix = (new Date()).getTime();
+				const timeStr = j['datetime'];
+				clocks[i].fetchTimeStr = timeStr;
+				displayClockTime(i, timeStr.substr(11, 1), timeStr.substr(12, 1), timeStr.substr(14, 1), timeStr.substr(15, 1));
+			} else {
+				displayClockTime(i, '?', '?', '?', '?');
+				if (tryNumber < 3) {
+					setTimeout(async () => {
+						await updateClock(c, i, tryNumber + 1);
+					}, 5000);
 				}
-			});
-		} else {
-			const fetchTotalSeconds = parseInt(clock.fetchTimeStr.substr(11, 2), 10) * 60 * 60 + parseInt(clock.fetchTimeStr.substr(14, 2), 10) * 60 + parseInt(clock.fetchTimeStr.substr(17, 2), 10);
-			const diffSeconds = ((new Date()).getTime() - clock.fetchTimeUnix) / 1000;
-			const curTotalMinutes = Math.round((fetchTotalSeconds + diffSeconds) / 60);
-			const h = Math.trunc(curTotalMinutes / 60) % 24;
-			const m = curTotalMinutes % 60;
-			const hh = h < 10 ? '0' + h : '' + h;
-			const mm = m < 10 ? '0' + m : '' + m;
-			displayClockTime(i, hh.substr(0, 1), hh.substr(1, 1), mm.substr(0, 1), mm.substr(1, 1));			
-		}
+			}
+		});
+	} else {
+		const fetchTotalSeconds = parseInt(clock.fetchTimeStr.substr(11, 2), 10) * 60 * 60 + parseInt(clock.fetchTimeStr.substr(14, 2), 10) * 60 + parseInt(clock.fetchTimeStr.substr(17, 2), 10);
+		const diffSeconds = ((new Date()).getTime() - clock.fetchTimeUnix) / 1000;
+		const curTotalMinutes = Math.round((fetchTotalSeconds + diffSeconds) / 60);
+		const h = Math.trunc(curTotalMinutes / 60) % 24;
+		const m = curTotalMinutes % 60;
+		const hh = h < 10 ? '0' + h : '' + h;
+		const mm = m < 10 ? '0' + m : '' + m;
+		displayClockTime(i, hh.substr(0, 1), hh.substr(1, 1), mm.substr(0, 1), mm.substr(1, 1));
 	}
 };
 
@@ -124,95 +130,264 @@ const updateClocks = () => {
 	});
 };
 
-const addClocks = () => {
-	log('add clocks');
+const handleClocks = () => {
+	log('handleClocks');
 	clocks = [];
 	const parentElm = document.querySelector(parentElementQuerySelector);
-	if (parentElm && config && config.mastheadClocks && config.mastheadClocks.length && config.mastheadClocks.length > 0) {
-		parentElm.classList.add('flex', 'justify-content--center', 'align-items--center');
-		const clocksElm = document.createElement('div');
-		clocksElm.setAttribute('id', 'octanetopus--clocks');
-		clocksElm.classList.add('octanetopus--clocks');
-		config.mastheadClocks.forEach((c, i) => {
-			clocks.push({
-				longName: c.longName,
-				shortName: c.shortName,
-				countryCode: c.countryCode,
-				timeZone: c.timeZone,
+	if (!parentElm || !config || !config.mastheadClocks || !config.mastheadClocks.length || config.mastheadClocks.length === 0) {
+		return;
+	}
+
+	parentElm.classList.add('flex', 'justify-content--center', 'align-items--center');
+	const clocksElm = document.createElement('div');
+	clocksElm.setAttribute('id', 'octanetopus--clocks');
+	clocksElm.classList.add('octanetopus--clocks');
+	config.mastheadClocks.forEach((c, i) => {
+		clocks.push({
+			longName: c.longName,
+			shortName: c.shortName,
+			countryCode: c.countryCode,
+			timeZone: c.timeZone,
+		});
+
+		const clockElm = document.createElement('div');
+		clockElm.setAttribute('id', `octanetopus--clock--${i}`);
+		clockElm.classList.add('octanetopus--clock');
+		clockElm.setAttribute('title', c.longName);
+
+		const flagElm = document.createElement('img');
+		flagElm.setAttribute('id', `octanetopus--clock--${i}--flag`);
+		flagElm.classList.add('octanetopus--clock--flag');
+		flagElm.setAttribute('src', chrome.extension.getURL(`img/flags/${c.countryCode}.svg`));
+		clockElm.appendChild(flagElm);
+
+		const textElm = document.createElement('div');
+		textElm.classList.add(`octanetopus--clock--text`);
+
+		const nameElm = document.createElement('div');
+		nameElm.classList.add('octanetopus--clock--name', 'octanetopus-ellipsis');
+		nameElm.textContent = c.shortName;
+		textElm.appendChild(nameElm);
+
+		const timeElm = document.createElement('div');
+		timeElm.setAttribute('id', `octanetopus--clock--${i}--time`);
+		timeElm.classList.add('octanetopus--clock--time');
+
+		for (let ul = 0; ul < 4; ul++) {
+			const digitContainerElm = document.createElement('ul');
+			digitContainerElm.setAttribute('id', `octanetopus--clock--${i}--digit-container--${ul}`);
+			digitContainerElm.classList.add('octanetopus--clock--digit-container');
+
+			['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '?'].forEach(d => {
+				const digitElm = document.createElement('li');
+				digitElm.setAttribute('id', `octanetopus--clock--${i}--digit-item`);
+				digitElm.classList.add('octanetopus--clock--digit-item');
+				digitElm.textContent = d;
+				digitContainerElm.appendChild(digitElm);
 			});
 
-			const clockElm = document.createElement('div');
-			clockElm.setAttribute('id', `octanetopus--clock--${i}`);
-			clockElm.classList.add('octanetopus--clock');
-			clockElm.setAttribute('title', c.longName);
+			timeElm.appendChild(digitContainerElm);
+		}
 
-			const flagElm = document.createElement('img');
-			flagElm.setAttribute('id', `octanetopus--clock--${i}--flag`);
-			flagElm.classList.add('octanetopus--clock--flag');
-			flagElm.setAttribute('src', chrome.extension.getURL(`img/flags/${c.countryCode}.svg`));
-			clockElm.appendChild(flagElm);
+		textElm.appendChild(timeElm);
 
-			const textElm = document.createElement('div');
-			textElm.classList.add(`octanetopus--clock--text`);
+		clockElm.appendChild(textElm);
 
-			const nameElm = document.createElement('div');
-			nameElm.classList.add('octanetopus--clock--name', 'octanetopus-ellipsis');
-			nameElm.textContent = c.shortName;
-			textElm.appendChild(nameElm);
-
-			const timeElm = document.createElement('div');
-			timeElm.setAttribute('id', `octanetopus--clock--${i}--time`);
-			timeElm.classList.add('octanetopus--clock--time');
-
-			for (let ul = 0; ul < 4; ul++) {
-				const digitContainerElm = document.createElement('ul');
-				digitContainerElm.setAttribute('id', `octanetopus--clock--${i}--digit-container--${ul}`);
-				digitContainerElm.classList.add('octanetopus--clock--digit-container');
-
-				['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '?'].forEach(d => {
-					const digitElm = document.createElement('li');
-					digitElm.setAttribute('id', `octanetopus--clock--${i}--digit-item`);
-					digitElm.classList.add('octanetopus--clock--digit-item');
-					digitElm.textContent = d;
-					digitContainerElm.appendChild(digitElm);
-				});
-
-				timeElm.appendChild(digitContainerElm);
-			}
-
-			textElm.appendChild(timeElm);
-
-			clockElm.appendChild(textElm);
-
-			clocksElm.appendChild(clockElm);
-		});
-		parentElm.insertBefore(clocksElm, parentElm.childNodes[0]);
-		config.mastheadClocks.forEach((c, i) => {
-			displayClockTime(i, '?', '?', '?', '?');
-		});
-		log(`${config.mastheadClocks.length} clocks added`);
+		clocksElm.appendChild(clockElm);
+	});
+	parentElm.insertBefore(clocksElm, parentElm.childNodes[0]);
+	config.mastheadClocks.forEach((c, i) => {
+		displayClockTime(i, '?', '?', '?', '?');
+	});
+	log(`${config.mastheadClocks.length} clocks added`);
+	updateClocks();
+	setInterval(() => {
 		updateClocks();
-		setInterval(() => {
-			updateClocks();
-		}, 60000);
+	}, 60000);
+};
+
+const playRadio = async () => {
+	log('playRadio');
+	isPlayTriggered = true;
+	const playerElm = document.getElementById('octanetopus--player');
+	const radioElm = document.getElementById('octanetopus--player--radio');
+	const audioElm = document.getElementById('octanetopus--player--audio');
+	try {
+		playerElm.classList.add('octanetopus--player--active');
+		audioElm.setAttribute('src', audioStreams[audioStreamIndex].src);
+		await audioElm.play();
+		radioElm.setAttribute('title', audioStreams[audioStreamIndex].name);
+		isAudioOn = true;
+	} catch (err) {
+		log(`error playing audio from ${audioStreams[audioStreamIndex].name}`);
+		stopRadio();
+	} finally {
+		isPlayTriggered = false;
 	}
+};
+
+const stopRadio = () => {
+	log('stopRadio');
+	const playerElm = document.getElementById('octanetopus--player');
+	const radioElm = document.getElementById('octanetopus--player--radio');
+	const audioElm = document.getElementById('octanetopus--player--audio');
+	playerElm.classList.remove('octanetopus--player--active');
+	audioElm.pause();
+	radioElm.setAttribute('title', '');
+	isAudioOn = false;
+};
+
+const onClickLed = async () => {
+	log('onClickLed');
+	if (isPlayTriggered) {
+		return;
+	}
+	if (isAudioOn) {
+		stopRadio();
+	} else {
+		await playRadio();
+	}
+};
+
+const onClickRadio = async () => {
+	log('onClickRadio');
+	if (isPlayTriggered) {
+		return;
+	}
+	if (isAudioOn) {
+		stopRadio();
+	} else {
+		await playRadio();
+	}
+};
+
+const getPrevStation = () => {
+	return (audioStreamIndex - 1 + audioStreams.length) % audioStreams.length;
+};
+
+const getNextStation = () => {
+	return (audioStreamIndex + 1 + audioStreams.length) % audioStreams.length;
+};
+
+const onClickPrevStation = async () => {
+	log('onClickPrevStation');
+	if (isPlayTriggered) {
+		return;
+	}
+	const startIndex = audioStreamIndex;
+	do {
+		audioStreamIndex = getPrevStation();
+		await playRadio();
+	} while(!isAudioOn && audioStreamIndex !== startIndex);
+};
+
+const onClickNextStation = async () => {
+	log('onClickNextStation');
+	if (isPlayTriggered) {
+		return;
+	}
+	const startIndex = audioStreamIndex;
+	do {
+		audioStreamIndex = getNextStation();
+		await playRadio();
+	} while(!isAudioOn && audioStreamIndex !== startIndex);
+};
+
+const addPlayer = () => {
+	log('addPlayer');
+	const parentElm = document.querySelector(parentElementQuerySelector);
+	if (!parentElm) {
+		return;
+	}
+
+	const playerElm = document.createElement('div');
+	playerElm.setAttribute('id', 'octanetopus--player');
+	playerElm.classList.add('octanetopus--player');
+
+	const ledElm = document.createElement('div');
+	ledElm.setAttribute('id', 'octanetopus--player--led');
+	ledElm.classList.add('octanetopus--player--led');
+	ledElm.addEventListener('click', onClickLed, false);
+	playerElm.appendChild(ledElm);
+
+	const leftArrow = document.createElement('img');
+	leftArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-left.svg`));
+	leftArrow.classList.add('octanetopus--player--station--button', 'octanetopus--player--station--prev');
+	leftArrow.addEventListener('click', onClickPrevStation, false);
+	playerElm.appendChild(leftArrow);
+
+	const radioElm = document.createElement('img');
+	radioElm.setAttribute('id', 'octanetopus--player--radio');
+	radioElm.setAttribute('src', chrome.extension.getURL(`img/radio.svg`));
+	radioElm.classList.add('octanetopus--player--radio');
+	radioElm.addEventListener('click', onClickRadio, false);
+	playerElm.appendChild(radioElm);
+
+	const rightArrow = document.createElement('img');
+	rightArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-right.svg`));
+	rightArrow.classList.add('octanetopus--player--station--button', 'octanetopus--player--station--next');
+	rightArrow.addEventListener('click', onClickNextStation, false);
+	playerElm.appendChild(rightArrow);
+
+	const audioElm = document.createElement('audio');
+	audioElm.pause();
+	audioElm.setAttribute('id', 'octanetopus--player--audio');
+	audioElm.setAttribute('preload', 'none');
+	playerElm.appendChild(audioElm);
+
+	parentElm.insertBefore(playerElm, parentElm.childNodes[0]);
+};
+
+const shuffleArray = (arr) => {
+	let ind = arr.length, tempVal, randInd;
+	while (0 !== ind) {
+		randInd = Math.floor(Math.random() * ind);
+		ind -= 1;
+		tempVal = arr[ind];
+		arr[ind] = arr[randInd];
+		arr[randInd] = tempVal;
+	}
+	return arr;
+};
+
+const fetchAudioStreams = () => {
+	log('fetchAudioStreams');
+	audioStreams = [];
+	chrome.runtime.sendMessage(
+	{
+		type: 'octanetopus-content-to-background--audio-streams',
+	},
+	response => {
+		const jsonObj = JSON.parse(response);
+		if (jsonObj['audioStreams']) {
+			audioStreams = [...audioStreams, ...jsonObj['audioStreams']];
+		}
+		shuffleArray(audioStreams);
+	});
+};
+
+const handlePlayer = () => {
+	log('handlePlayer');
+	addPlayer();
+	fetchAudioStreams();
 };
 
 const handleNews = () => {
 	log('handleNews');
 	const parentElm = document.querySelector(parentElementQuerySelector);
-	if (parentElm && config.rssFeed && config.rssFeed.enabled) {
-
-		const newsElm = document.createElement('div');
-		newsElm.setAttribute('id', 'octanetopus--news');
-		newsElm.classList.add('octanetopus--news');
-		parentElm.insertBefore(newsElm, parentElm.childNodes[0]);
-
-		getNews();
-		setInterval(() => {
-			getNews();
-		}, config.rssFeed.refreshMinutes*60*1000);
+	if (!parentElm || !config.rssFeed || !config.rssFeed.enabled) {
+		return;
 	}
+
+	const newsElm = document.createElement('div');
+	newsElm.setAttribute('id', 'octanetopus--news');
+	newsElm.classList.add('octanetopus--news');
+	parentElm.insertBefore(newsElm, parentElm.childNodes[0]);
+
+	getNews();
+	setInterval(() => {
+		getNews();
+	}, config.rssFeed.refreshMinutes * 60 * 1000);
 };
 
 const getNews = () => {

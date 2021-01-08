@@ -5,7 +5,7 @@ const defaultConfigObj = {
 	octaneInstances: [
 		{
 			name: 'Local',
-			urlPart: 'localhost:9090/ui/',
+			urlPart: 'localhost:9090/dev/ui/',
 			mastheadGradient: [
 				'#c6179d',
 				'#333',
@@ -22,8 +22,17 @@ const defaultConfigObj = {
 			]
 		},
 		{
-			name: 'Extended',
-			urlPart: 'myd-vma00299.swinfra.net:30003/ui/',
+			name: 'FullDev',
+			urlPart: 'full-dev.almoctane.com/ui/',
+			mastheadGradient: [
+				'#e57828',
+				'#333',
+				'#333'
+			]
+		},
+		{
+			name: 'NightlyDev',
+			urlPart: 'nightly-dev.almoctane.com/ui/',
 			mastheadGradient: [
 				'#00a989',
 				'#333',
@@ -31,14 +40,24 @@ const defaultConfigObj = {
 			]
 		},
 		{
-			name: 'Nightly',
-			urlPart: 'myd-vma00299.swinfra.net:30004/ui/',
+			name: 'NightlyProd',
+			urlPart: 'nightly-production.almoctane.com/ui/',
 			mastheadGradient: [
 				'#0b8eac',
 				'#333',
 				'#333'
 			]
 		},
+		{
+			name: 'OctanetopusDevTest',
+			urlPart: 'http://127.0.0.1:8090/octanetopus-test.html',
+			mastheadGradient: [
+				'#c6179d',
+				'#333',
+				'#333'
+			]
+		},
+
 	],
 	mastheadClocks: [
 		{
@@ -76,5 +95,8 @@ const defaultConfigObj = {
 		enabled: true,
 		refreshMinutes: 5,
 		url: 'http://rss.walla.co.il/feed/22',
+		_unused_url1: 'http://rss.walla.co.il/feed/22',
+		_unused_url2: 'http://www.ynet.co.il/Integration/StoryRss3254.xml',
+		_unused_url3: 'http://rss.cnn.com/rss/edition_world.rss',
 	},
 };
