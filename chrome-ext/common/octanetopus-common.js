@@ -1,7 +1,7 @@
 const localStorageConfigKey = 'octanetopus-config';
-const currentConfigVer = 2;
+const currentConfigVer = 3;
 const defaultConfigObj = {
-	configVersion: 2,
+	configVersion: 3,
 	octaneInstances: [
 		{
 			name: 'Local',
@@ -66,24 +66,24 @@ const defaultConfigObj = {
 			countryCode: 'us',
 			timeZone: 'America/Los_Angeles'
 		},
-		{
-			longName: 'London',
-			shortName: 'LON',
-			countryCode: 'gb',
-			timeZone: 'Europe/London'
-		},
+		// {
+		// 	longName: 'London',
+		// 	shortName: 'LON',
+		// 	countryCode: 'gb',
+		// 	timeZone: 'Europe/London'
+		// },
 		{
 			longName: 'Tel Aviv',
 			shortName: 'TLV',
 			countryCode: 'il',
 			timeZone: 'Asia/Jerusalem'
 		},
-		{
-			longName: 'New Delhi',
-			shortName: 'DL',
-			countryCode: 'in',
-			timeZone: 'Asia/Kolkata'
-		},
+		// {
+		// 	longName: 'New Delhi',
+		// 	shortName: 'DL',
+		// 	countryCode: 'in',
+		// 	timeZone: 'Asia/Kolkata'
+		// },
 		{
 			longName: 'Shanghai',
 			shortName: 'SH',
@@ -99,7 +99,7 @@ const defaultConfigObj = {
 		_unused_url2: 'https://www.ynet.co.il/Integration/StoryRss3254.xml',
 		_unused_url3: 'http://rss.cnn.com/rss/edition_world.rss',
 	},
-	radio: {
+	audioStreaming: {
 		enabled: true,
 	}
 };
