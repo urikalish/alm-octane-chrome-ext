@@ -5,6 +5,19 @@ const log = (/*msg*/) => {
 	//console.log(`OCTANETOPUS CONTENT SCRIPT | ${msg}`);
 };
 
+const debounce = (func, wait) => {
+	let timeout;
+	return () => {
+		const context = this;
+		const later = () => {
+			timeout = null;
+			func.apply(context);
+		};
+		clearTimeout(timeout);
+		timeout = setTimeout(later, wait);
+	};
+};
+
 // Background ----------------------------------------------------------------------------------------------------------
 
 const colorMasthead = () => {
@@ -221,7 +234,7 @@ const getNews = () => {
 
 // Audio ---------------------------------------------------------------------------------------------------------------
 
-let isAudioOn = false;
+const CHANGE_STATION_DELAY = 3000;
 let isPlayTriggered = false;
 let audioStreams = [];
 let audioStreamIndex = 0;
@@ -238,7 +251,6 @@ const playAudio = async () => {
 		streamNameElm.classList.remove('octanetopus--player--stream-name--fade-out');
 		audioElm.setAttribute('src', audioStreams[audioStreamIndex].src);
 		await audioElm.play();
-		isAudioOn = true;
 		streamNameElm.classList.add('octanetopus--player--stream-name--fade-out');
 	} catch (err) {
 		log(`error playing audio from ${audioStreams[audioStreamIndex].name}`);
@@ -253,8 +265,10 @@ const stopAudio = () => {
 	playerElm.classList.remove('octanetopus--player--active');
 	audioElm.pause();
 	streamNameElm.textContent = '';
-	isAudioOn = false;
 };
+
+const getPrevStreamIndex = () => (audioStreamIndex - 1 + audioStreams.length) % audioStreams.length;
+const getNextStreamIndex = () => (audioStreamIndex + 1 + audioStreams.length) % audioStreams.length;
 
 const searchStation = async (isUp) => {
 	log('searchStation');
@@ -264,12 +278,12 @@ const searchStation = async (isUp) => {
 	const startIndex = audioStreamIndex;
 	do {
 		if (isUp) {
-			audioStreamIndex = (audioStreamIndex + 1 + audioStreams.length) % audioStreams.length;
+			audioStreamIndex = getNextStreamIndex();
 		} else {
-			audioStreamIndex = (audioStreamIndex - 1 + audioStreams.length) % audioStreams.length;
+			audioStreamIndex = getPrevStreamIndex();
 		}
 		await playAudio();
-	} while(!isAudioOn && audioStreamIndex !== startIndex);
+	} while(audioElm.paused && audioStreamIndex !== startIndex);
 };
 
 const toggleAudio = async () => {
@@ -277,15 +291,15 @@ const toggleAudio = async () => {
 	if (isPlayTriggered) {
 		return;
 	}
-	if (isAudioOn) {
-		stopAudio();
-	} else {
+	if (audioElm.paused) {
 		(async () => {
 			await playAudio();
-			if (!isAudioOn) {
+			if (audioElm.paused) {
 				await searchStation(true);
 			}
 		})();
+	} else {
+		stopAudio();
 	}
 };
 
@@ -299,14 +313,36 @@ const onClickAudio = async () => {
 	await toggleAudio();
 };
 
+const debouncePrevStream = debounce(async () => {
+	audioStreamIndex = getNextStreamIndex();
+	await searchStation(false);
+}, CHANGE_STATION_DELAY);
+
 const onClickPrevStream = async () => {
 	log('onClickPrevStream');
-	await searchStation(false);
+	if (audioElm.paused) {
+		await toggleAudio();
+	} else {
+		audioStreamIndex = getPrevStreamIndex();
+		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
+		debouncePrevStream();
+	}
 };
+
+const debounceNextStream = debounce(async () => {
+	audioStreamIndex = getPrevStreamIndex();
+	await searchStation(true);
+}, CHANGE_STATION_DELAY);
 
 const onClickNextStream = async () => {
 	log('onClickNextStream');
-	await searchStation(true);
+	if (audioElm.paused) {
+		await toggleAudio();
+	} else {
+		audioStreamIndex = getNextStreamIndex();
+		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
+		debounceNextStream();
+	}
 };
 
 const addPlayer = () => {
@@ -387,8 +423,10 @@ const fetchAudioStreams = () => {
 		if (jsonObj['_audioStreams'] && (window.location.hostname.startsWith('localhost') || window.location.hostname.startsWith('127.0.0.1'))) {
 			audioStreams = [...audioStreams, ...jsonObj['_audioStreams']];
 		}
-		//audioStreams = [{name: "KXT", src: "https://kera-ice.streamguys1.com/kxtlive128"}];
 		shuffleArray(audioStreams);
+		// audioStreams = [
+		// 	{"name": "CNN", "src": "https://tunein.streamguys1.com/cnn-new"},
+		// ];
 	});
 };
 
@@ -397,7 +435,6 @@ const handlePlayer = () => {
 	addPlayer();
 	fetchAudioStreams();
 };
-
 
 // ---------------------------------------------------------------------------------------------------------------------
 
