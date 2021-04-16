@@ -238,22 +238,33 @@ const CHANGE_STATION_DELAY = 3000;
 let isPlayTriggered = false;
 let audioStreams = [];
 let audioStreamIndex = 0;
+let favoriteStreamNames = [];
+let errorStreamNames = [];
 let playerElm;
 let audioElm;
 let streamNameElm;
+let stationListElm;
+const doStationsTest = false;
+let lastStationsTestTime = 0;
 
 const playAudio = async () => {
 	log('playAudio');
 	isPlayTriggered = true;
+	let streamName;
 	try {
+		streamName = audioStreams[audioStreamIndex].name;
 		playerElm.classList.add('octanetopus--player--active');
-		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
+		streamNameElm.textContent = streamName;
+		markFavoriteState(streamName);
 		streamNameElm.classList.remove('octanetopus--player--stream-name--fade-out');
 		audioElm.setAttribute('src', audioStreams[audioStreamIndex].src);
 		await audioElm.play();
+		stationIsOk(streamName);
+		saveLastStreamName(streamName);
 		streamNameElm.classList.add('octanetopus--player--stream-name--fade-out');
 	} catch (err) {
 		log(`error playing audio from ${audioStreams[audioStreamIndex].name}`);
+		stationIsError(streamName);
 		stopAudio();
 	} finally {
 		isPlayTriggered = false;
@@ -292,12 +303,10 @@ const toggleAudio = async () => {
 		return;
 	}
 	if (audioElm.paused) {
-		(async () => {
-			await playAudio();
-			if (audioElm.paused) {
-				await searchStation(true);
-			}
-		})();
+		await playAudio();
+		if (audioElm.paused) {
+			await searchStation(true);
+		}
 	} else {
 		stopAudio();
 	}
@@ -305,12 +314,86 @@ const toggleAudio = async () => {
 
 const onClickLed = async () => {
 	log('onClickLed');
+	hideStreamList();
 	await toggleAudio();
 };
 
-const onClickAudio = async () => {
-	log('onClickAudio');
-	await toggleAudio();
+const loadLastStreamName = () => {
+	log('loadLastStreamName');
+	return localStorage.getItem('octanetopusLastStreamName') || '';
+};
+
+const saveLastStreamName = (streamName) => {
+	log('saveLastStreamName');
+	localStorage.setItem('octanetopusLastStreamName', streamName);
+};
+
+const saveFavoriteStreams = () => {
+	log('saveFavoriteStreams');
+	localStorage.setItem('octanetopusFavoriteStreamNames', JSON.stringify(favoriteStreamNames));
+}
+
+const loadFavoriteStreams = () => {
+	log('loadFavoriteStreams');
+	favoriteStreamNames = [];
+	const loadedFavoriteStreamNamesStr = localStorage.getItem('octanetopusFavoriteStreamNames') || '[]';
+	const loadedFavoriteStreamNames = JSON.parse(loadedFavoriteStreamNamesStr);
+	loadedFavoriteStreamNames.forEach(loadedFavoriteStreamName => {
+		if (audioStreams.find(audioStream => audioStream.name === loadedFavoriteStreamName)) {
+			favoriteStreamNames.push(loadedFavoriteStreamName);
+		}
+	});
+	if (favoriteStreamNames.length > 0) {
+		favoriteStreamNames.sort();
+		saveFavoriteStreams();
+	}
+};
+
+const isStreamFavorite = (streamName) => {
+	log('isStreamFavorite');
+	return favoriteStreamNames.findIndex(favoriteStreamName => favoriteStreamName === streamName) > -1;
+}
+
+const markFavoriteState = (streamName) => {
+	const favoriteStationClass = 'octanetopus--player--favorite-station';
+	if (isStreamFavorite(streamName)) {
+		playerElm.classList.add(favoriteStationClass);
+	} else {
+		playerElm.classList.remove(favoriteStationClass);
+	}
+};
+
+const addToFavoriteStreams = (streamName) => {
+	log('addToFavorites');
+	favoriteStreamNames.push(streamName);
+	favoriteStreamNames.sort();
+	saveFavoriteStreams();
+}
+
+const removeFromFavoriteStreams = (streamName) => {
+	log('removeFromFavoriteStreams');
+	const index = favoriteStreamNames.findIndex(favoriteStreamName => favoriteStreamName === streamName);
+	if (index > -1) {
+		favoriteStreamNames.splice(index, 1);
+	}
+	favoriteStreamNames.sort();
+	saveFavoriteStreams();
+}
+
+const onClickToggleFavoriteStream = async() => {
+	log('onClickToggleFavoriteStream');
+	if (audioElm.paused) {
+		return;
+	}
+	const favoriteStationClass = 'octanetopus--player--favorite-station';
+	const streamName = audioStreams[audioStreamIndex].name;
+	if (isStreamFavorite(streamName)) {
+		playerElm.classList.remove(favoriteStationClass);
+		removeFromFavoriteStreams(streamName);
+	} else {
+		playerElm.classList.add(favoriteStationClass);
+		addToFavoriteStreams(streamName);
+	}
 };
 
 const debouncePrevStream = debounce(async () => {
@@ -324,7 +407,10 @@ const onClickPrevStream = async () => {
 		await toggleAudio();
 	} else {
 		audioStreamIndex = getPrevStreamIndex();
-		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
+		const streamName = audioStreams[audioStreamIndex].name;
+		streamNameElm.textContent = streamName;
+		markFavoriteState(streamName);
+		populateStreamList();
 		debouncePrevStream();
 	}
 };
@@ -340,8 +426,121 @@ const onClickNextStream = async () => {
 		await toggleAudio();
 	} else {
 		audioStreamIndex = getNextStreamIndex();
-		streamNameElm.textContent = audioStreams[audioStreamIndex].name;
+		const streamName = audioStreams[audioStreamIndex].name;
+		streamNameElm.textContent = streamName;
+		markFavoriteState(streamName);
+		populateStreamList();
 		debounceNextStream();
+	}
+};
+
+const onClickStreamName = async (e) => {
+	log('onClickStreamName');
+	const streamName = e.target.textContent;
+	const index = audioStreams.findIndex(s => s.name === streamName);
+	if (index === -1) {
+		return;
+	}
+	streamNameElm.textContent = streamName;
+	markFavoriteState(streamName);
+	audioStreamIndex = index;
+	populateStreamList();
+	audioStreamIndex = getPrevStreamIndex();
+	await searchStation(true);
+}
+
+const populateStreamList = () => {
+	log('populateStreamList');
+	let sortedAudioStreamNames = audioStreams.map(s => s.name).sort();
+	const playingStreamName = audioStreams[audioStreamIndex].name;
+	stationListElm.innerHTML = '';
+	sortedAudioStreamNames.forEach(streamName => {
+		const stationElm = document.createElement('div');
+		stationElm.textContent = streamName;
+		stationElm.classList.add('octanetopus--player--station');
+		let canSelect = true;
+		if (streamName === playingStreamName) {
+			stationElm.classList.add('octanetopus--player--station--playing');
+			canSelect = false;
+		} else if (isStreamFavorite(streamName)) {
+			stationElm.classList.add('octanetopus--player--station--favorite');
+		}
+		if (errorStreamNames.includes(streamName)) {
+			stationElm.classList.add('octanetopus--player--station--error');
+			canSelect = false;
+		}
+		if (canSelect) {
+			stationElm.addEventListener('click', onClickStreamName, false);
+		}
+		stationListElm.appendChild(stationElm);
+	});
+};
+
+const testAllStations = () => {
+	log('testAllStations');
+	audioStreams.forEach(s => {
+		(async () => {
+			const a = document.createElement('audio');
+			a.pause();
+			a.setAttribute('volume', '0');
+			a.setAttribute('preload', 'none');
+			a.setAttribute('src', s.src);
+			try {
+				await a.play();
+				a.pause();
+				stationIsOk(s.name);
+			} catch (err) {
+				stationIsError(s.name);
+			}
+		})();
+	});
+};
+
+const showStreamList = () => {
+	log('showStreamList');
+	const showStationListClass = 'octanetopus--player--show-station-list';
+	playerElm.classList.add(showStationListClass);
+	if (doStationsTest && (Date.now() - lastStationsTestTime) > 1000*60*60) {
+		lastStationsTestTime = Date.now();
+		setTimeout(() => {
+			testAllStations();
+		}, 3000);
+	}
+};
+
+const stationIsOk = (streamName) => {
+	const index = errorStreamNames.indexOf(streamName);
+	if (index > -1) {
+		errorStreamNames.splice(index, 1);
+	}
+	populateStreamList();
+};
+
+const stationIsError = (streamName) => {
+	if (!errorStreamNames.includes(streamName)) {
+		errorStreamNames.push(streamName);
+	}
+	populateStreamList();
+
+};
+
+const hideStreamList = () => {
+	log('hideStreamList');
+	const showStationListClass = 'octanetopus--player--show-station-list';
+	playerElm.classList.remove(showStationListClass);
+};
+
+const onClickStreamList = async () => {
+	log('onClickStreamList');
+	if (audioElm.paused) {
+		return;
+	}
+	populateStreamList();
+	const showStationListClass = 'octanetopus--player--show-station-list';
+	if (playerElm.classList.contains(showStationListClass)) {
+		hideStreamList();
+	} else {
+		showStreamList();
 	}
 };
 
@@ -353,43 +552,59 @@ const addPlayer = () => {
 	}
 
 	playerElm = document.createElement('div');
-	playerElm.setAttribute('id', 'octanetopus--player');
 	playerElm.classList.add('octanetopus--player');
 
 	const ledElm = document.createElement('div');
-	ledElm.setAttribute('id', 'octanetopus--player--led');
 	ledElm.classList.add('octanetopus--player--led');
+	ledElm.setAttribute('title', 'power on/off');
 	ledElm.addEventListener('click', onClickLed, false);
 	playerElm.appendChild(ledElm);
 
+	const imageElm = document.createElement('img');
+	imageElm.setAttribute('src', chrome.extension.getURL(`img/music-list.svg`));
+	imageElm.setAttribute('title', 'show/hide station list');
+	imageElm.classList.add('octanetopus--player--music-list-image');
+	imageElm.addEventListener('click', onClickStreamList, false);
+	playerElm.appendChild(imageElm);
+	stationListElm = document.createElement('div');
+	stationListElm.classList.add('octanetopus--player--station-list');
+	playerElm.appendChild(stationListElm);
+
+	const starEmptyImageElm = document.createElement('img');
+	starEmptyImageElm.setAttribute('src', chrome.extension.getURL(`img/star-empty.svg`));
+	starEmptyImageElm.setAttribute('title', 'add to favorites');
+	starEmptyImageElm.classList.add('octanetopus--player--star-empty-image');
+	starEmptyImageElm.addEventListener('click', onClickToggleFavoriteStream, false);
+	playerElm.appendChild(starEmptyImageElm);
+
+	const starFullImageElm = document.createElement('img');
+	starFullImageElm.setAttribute('src', chrome.extension.getURL(`img/star-full.svg`));
+	starFullImageElm.setAttribute('title', 'remove from favorites');
+	starFullImageElm.classList.add('octanetopus--player--star-full-image');
+	starFullImageElm.addEventListener('click', onClickToggleFavoriteStream, false);
+	playerElm.appendChild(starFullImageElm);
+
 	const leftArrow = document.createElement('img');
 	leftArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-left.svg`));
+	leftArrow.setAttribute('title', 'change station');
 	leftArrow.classList.add('octanetopus--player--navigate--button', 'octanetopus--player--navigate--prev');
 	leftArrow.addEventListener('click', onClickPrevStream, false);
 	playerElm.appendChild(leftArrow);
 
-	const imageElm = document.createElement('img');
-	imageElm.setAttribute('id', 'octanetopus--player--image');
-	imageElm.setAttribute('src', chrome.extension.getURL(`img/note.svg`));
-	imageElm.classList.add('octanetopus--player--image');
-	imageElm.addEventListener('click', onClickAudio, false);
-	playerElm.appendChild(imageElm);
-
 	const rightArrow = document.createElement('img');
 	rightArrow.setAttribute('src', chrome.extension.getURL(`img/arrow-right.svg`));
+	rightArrow.setAttribute('title', 'change station');
 	rightArrow.classList.add('octanetopus--player--navigate--button', 'octanetopus--player--navigate--next');
 	rightArrow.addEventListener('click', onClickNextStream, false);
 	playerElm.appendChild(rightArrow);
 
 	streamNameElm = document.createElement('div');
-	streamNameElm.setAttribute('id', 'octanetopus--player--stream-name');
 	streamNameElm.classList.add('octanetopus--player--stream-name');
 	streamNameElm.textContent = '';
 	playerElm.appendChild(streamNameElm);
 
 	audioElm = document.createElement('audio');
 	audioElm.pause();
-	audioElm.setAttribute('id', 'octanetopus--player--audio');
 	audioElm.setAttribute('preload', 'none');
 	playerElm.appendChild(audioElm);
 
@@ -420,13 +635,26 @@ const fetchAudioStreams = () => {
 		if (jsonObj['audioStreams']) {
 			audioStreams = [...audioStreams, ...jsonObj['audioStreams']];
 		}
-		if (jsonObj['_audioStreams'] && (window.location.hostname.startsWith('localhost') || window.location.hostname.startsWith('127.0.0.1'))) {
-			audioStreams = [...audioStreams, ...jsonObj['_audioStreams']];
-		}
-		shuffleArray(audioStreams);
+		// if (jsonObj['_audioStreams'] && (window.location.hostname.startsWith('localhost') || window.location.hostname.startsWith('127.0.0.1'))) {
+		// 	audioStreams = [...audioStreams, ...jsonObj['_audioStreams']];
+		// }
 		// audioStreams = [
 		// 	{"name": "CNN", "src": "https://tunein.streamguys1.com/cnn-new"},
 		// ];
+		// audioStreams.sort((a,b) => {
+		// 	if (a.name < b.name) return -1;
+		// 	if (a.name > b.name) return 1;
+		// 	return 0;
+		// });
+		shuffleArray(audioStreams);
+		loadFavoriteStreams();
+		const loadedStreamName = loadLastStreamName();
+		const index = audioStreams.findIndex(audioStream => audioStream.name === loadedStreamName);
+		if (index > -1) {
+			audioStreamIndex = index;
+			markFavoriteState(audioStreams[audioStreamIndex].name);
+		}
+		populateStreamList();
 	});
 };
 

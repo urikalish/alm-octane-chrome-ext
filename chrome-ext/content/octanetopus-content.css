@@ -121,7 +121,7 @@
 .octanetopus--player {
     position: relative;
     display: flex;
-    min-width: 94px;
+    min-width: 122px;
     height: 26px;
     border-radius: 13px;
     border: 1px solid #666;
@@ -164,19 +164,81 @@
 .octanetopus--player--led:hover {
     opacity: 0.8;
 }
-.octanetopus--player--image {
-    position: relative;
-    height: 20px;
-    top: 2px;
+.octanetopus--player--station-list {
+    display: none;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 24px;
+    width: 1000px;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(33, 1fr);
+    border-radius: 13px;
+    border: 1px solid #666;
+    padding: 10px;
+    white-space: nowrap;
+    background-color: #222;
+    color: #ccc;
+    font-family: arial, sans-serif;
+    font-size: 11px;
+    cursor: pointer;
+    z-index: 1;
+}
+.octanetopus--player--active.octanetopus--player--show-station-list > .octanetopus--player--station-list {
+    display: grid;
+}
+.octanetopus--player--station {
+    opacity: 0.9;
+    transition: all 0.1s linear;
+}
+.octanetopus--player--station--favorite {
+    color: #fc0;
+}
+.octanetopus--player--station--playing {
+    color: #0f0;
+    cursor: default;
+}
+.octanetopus--player--station--error {
+    color: #666;
+    cursor: default;
+}
+.octanetopus--player--station--error {
+    color: #666;
+    cursor: default;
+}
+.octanetopus--player--station:hover {
+    opacity: 1;
+}
+.octanetopus--player--star-empty-image,
+.octanetopus--player--star-full-image,
+.octanetopus--player--music-list-image {
+    width: 24px;
+    height: 24px;
     opacity: 0.6;
     transition: all 0.25s ease-in-out;
     cursor: pointer;
 }
-.octanetopus--player--active > .octanetopus--player--image {
+.octanetopus--player--active > .octanetopus--player--star-empty-image,
+.octanetopus--player--active > .octanetopus--player--star-full-image,
+.octanetopus--player--active > .octanetopus--player--music-list-image {
     opacity: 1;
 }
-.octanetopus--player--image:hover {
+.octanetopus--player--star-empty-image:hover,
+.octanetopus--player--star-full-image:hover,
+.octanetopus--player--music-list-image:hover {
     opacity: 0.8;
+}
+.octanetopus--player--star-empty-image {
+    display: block;
+}
+.octanetopus--player--active.octanetopus--player--favorite-station > .octanetopus--player--star-empty-image {
+    display: none;
+}
+.octanetopus--player--star-full-image {
+    display: none;
+}
+.octanetopus--player--active.octanetopus--player--favorite-station > .octanetopus--player--star-full-image {
+    display: block;
 }
 .octanetopus--player--navigate--button {
     position: relative;
